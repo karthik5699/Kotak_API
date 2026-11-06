@@ -1,0 +1,25 @@
+# Sensitive credentials & daily sessions
+data/credentials.json
+data/session.json
+data/*.tmp
+Scalping/paper_account.json
+.env
+.DS_Store
+
+# Scrip master cache & logs
+data/scrip_cache/
+logs/
+*.log
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/

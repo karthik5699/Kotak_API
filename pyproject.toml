@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=65.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kotak-option-chain"
+version = "1.0.0"
+description = "Kotak Neo Option Chain & Greeks Engine for WhatsApp LLM Agents"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "kotakneoapi>=3.0.13",
+    "numpy>=1.26.0",
+    "scipy>=1.11.0",
+    "pydantic>=2.0.0",
+    "rich>=13.0.0",
+    "fastapi>=0.110.0",
+    "uvicorn>=0.29.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

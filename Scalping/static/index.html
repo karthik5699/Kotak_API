@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kite Scalper Terminal — Options Scalping Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- TradingView Lightweight Charts (Standalone Production Build) -->
+  <script src="https://unpkg.com/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <!-- TOP GLOBAL NAVIGATION BAR (Height: 38px) -->
+  <header class="top-navbar">
+    <div class="nav-left">
+      <div class="kite-logo" title="Options Scalper Terminal">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 2L2 12L12 22L22 12L12 2Z" fill="#f6461a"/>
+          <path d="M12 2L22 12L12 15L2 12L12 2Z" fill="#ff734c"/>
+        </svg>
+      </div>
+      <div class="workspace-pill">
+        <span>Scalper</span>
+        <span class="caret">▾</span>
+      </div>
+      <select id="symbol-select" class="nav-select" title="Select Underlying Index">
+        <option value="NIFTY" selected>NIFTY 50</option>
+        <option value="BANKNIFTY">NIFTY BANK</option>
+        <option value="FINNIFTY">FINNIFTY</option>
+        <option value="MIDCPNIFTY">MIDCPNIFTY</option>
+      </select>
+      <div class="poll-control" title="Kotak API Auto-Refresh Frequency">
+        <span class="poll-label">Poll:</span>
+        <select id="poll-interval-select" class="nav-select compact">
+          <option value="5000">5s</option>
+          <option value="7000" selected>7s</option>
+          <option value="10000">10s</option>
+          <option value="15000">15s</option>
+          <option value="0">Paused</option>
+        </select>
+        <button id="btn-manual-refresh" class="icon-btn" title="Refresh Now (R)">↻</button>
+      </div>
+    </div>
+
+    <!-- Center Cluster: Live Ticker Tape -->
+    <div class="nav-ticker-tape" id="ticker-tape">
+      <div class="ticker-item" id="ticker-nifty">
+        <span class="ticker-name">NIFTY 50</span>
+        <span class="ticker-arrow bullish">▲</span>
+        <span class="ticker-ltp tabular">--</span>
+        <span class="ticker-chg bullish tabular">--</span>
+      </div>
+      <div class="ticker-item">
+        <span class="ticker-name">FUTURES</span>
+        <span class="ticker-ltp tabular" id="ticker-fut-ltp">--</span>
+      </div>
+      <div class="ticker-item">
+        <span class="ticker-name">ATM STRADDLE</span>
+        <span class="ticker-ltp tabular" id="ticker-straddle">--</span>
+      </div>
+      <div class="ticker-item">
+        <span class="ticker-name">ATM IV</span>
+        <span class="ticker-ltp tabular" id="ticker-atm-iv">--</span>
+      </div>
+    </div>
+
+    <!-- Right Cluster: Paper Account MTM, Funds, Feed Status -->
+    <div class="nav-right">
+      <button id="btn-top-mtm" class="account-badge" title="Total Paper MTM (Realized + Unrealized P&L). Click to view Positions.">
+        <span class="badge-label">MTM</span>
+        <span id="nav-total-mtm" class="badge-value tabular">₹0.00</span>
+      </button>
+      <div class="account-badge" title="Unrealized Open P&L">
+        <span class="badge-label">Open P&L</span>
+        <span id="nav-unrealized-pnl" class="badge-value tabular">₹0.00</span>
+      </div>
+      <div class="account-badge" title="Available Paper Trading Margin">
+        <span class="badge-label">Wallet</span>
+        <span id="nav-available-funds" class="badge-value tabular">₹10.00L</span>
+      </div>
+      <button id="btn-flatten-all-top" class="flatten-btn" title="Square Off All Open Positions (Esc)">
+        Exit All
+      </button>
+      <button id="btn-reset-paper" class="icon-btn" title="Reset Paper Capital to ₹10,00,000">
+        ⟲
+      </button>
+      <div class="conn-indicator" id="conn-indicator" title="Kotak Neo Live API Connected">
+        <span class="conn-dot"></span>
+        <span id="last-sync-time" class="conn-time tabular">--:--:--</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MASTER VIEWPORT GRID (Left 30% Option Chain | Right 70% Charts + Scalper Order Window) -->
+  <main class="workspace-grid">
+    <!-- LEFT PANEL: OPTION CHAIN (ATM ± 5 Strikes = 11 Rows) -->
+    <aside class="left-panel">
+      <!-- 1. Top Utility Strip -->
+      <div class="oc-utility-strip">
+        <div class="utility-left">
+          <span class="util-tag">ATM ± 5 Strikes (11)</span>
+        </div>
+        <div class="utility-right">
+          <span class="util-stat">Realized: <strong id="oc-realized-pnl" class="tabular">₹0.00</strong></span>
+        </div>
+      </div>
+
+      <!-- 2. Underlying Spot Header Bar -->
+      <div class="oc-underlying-header">
+        <div class="und-left">
+          <span id="oc-symbol-title" class="und-title">NIFTY 50</span>
+          <span id="oc-spot-price" class="und-price bullish tabular">--</span>
+          <span id="oc-spot-change" class="und-change bullish tabular">--</span>
+        </div>
+        <div class="und-right">
+          <span class="lot-badge" id="oc-lot-badge">Lot: 65</span>
+        </div>
+      </div>
+
+      <!-- 3. Controls & Expiry Bar -->
+      <div class="oc-controls-bar">
+        <div class="expiry-select-wrap">
+          <select id="chain-expiry-select" class="expiry-pill-select" title="Option Chain Expiry"></select>
+        </div>
+        <div class="mode-toggle-group" role="group" aria-label="Option Chain Display Mode">
+          <button id="btn-mode-oi" class="mode-btn active" data-mode="oi">OI</button>
+          <button id="btn-mode-greeks" class="mode-btn" data-mode="greeks">Greeks</button>
+        </div>
+        <button id="btn-sync-expiry" class="link-btn active" title="Sync Expiry between Option Chain and Order Window">
+          🔗
+        </button>
+      </div>
+
+      <!-- 4. Option Chain Table (ATM ± 5 Strikes = 11 Rows) -->
+      <div class="oc-table-container">
+        <div class="oc-table-header">
+          <div class="oc-col-call">
+            <span id="oc-header-call-sub">% Chg / OI</span>
+            <span>Call LTP</span>
+          </div>
+          <div class="oc-col-strike">Strike</div>
+          <div class="oc-col-put">
+            <span>Put LTP</span>
+            <span id="oc-header-put-sub">% Chg / OI</span>
+          </div>
+        </div>
+        <div id="oc-rows-body" class="oc-rows-body">
+          <!-- 11 rows populated dynamically -->
+        </div>
+      </div>
+
+      <!-- 5. Option Chain Sticky Footer Summary -->
+      <footer class="oc-footer-summary">
+        <div class="summary-cell">
+          <span class="summary-label">PCR</span>
+          <span id="sum-pcr" class="summary-val tabular">--</span>
+        </div>
+        <div class="summary-cell">
+          <span class="summary-label">Max Pain</span>
+          <span id="sum-max-pain" class="summary-val tabular">--</span>
+        </div>
+        <div class="summary-cell">
+          <span class="summary-label">ATM IV</span>
+          <span id="sum-atm-iv" class="summary-val tabular">--</span>
+        </div>
+        <div class="summary-cell">
+          <span class="summary-label">IV Percentile</span>
+          <span id="sum-ivp" class="summary-val tabular">--</span>
+        </div>
+      </footer>
+    </aside>
+
+    <!-- RIGHT COLUMN: TOP-RIGHT 3-PANE CHARTS (72%) + BOTTOM-RIGHT SCALPER ORDER WINDOW (28%) -->
+    <section class="right-column">
+      <!-- TOP-RIGHT PANEL: 3-PANE SYNCHRONIZED CHART WORKSPACE -->
+      <div class="charts-workspace">
+        <!-- Panel Tab Bar -->
+        <div class="panel-tab-bar">
+          <div class="panel-tabs">
+            <button class="panel-tab active">📈 Chart</button>
+            <span class="panel-tab-hint">TradingView Live P&amp;L Overlay Active on Right Axis</span>
+          </div>
+          <div class="panel-controls">
+            <span class="layout-badge">3-Pane Scalper</span>
+          </div>
+        </div>
+
+        <!-- Shared Chart Toolbar -->
+        <div class="chart-toolbar">
+          <div class="toolbar-left">
+            <div class="chart-symbol-tag">
+              <span>🔍</span>
+              <strong id="toolbar-symbol-label">NIFTY 50</strong>
+            </div>
+            <div class="divider-v"></div>
+            <div class="tf-strip" id="timeframe-strip">
+              <button class="tf-btn" data-tf="1min">1m</button>
+              <button class="tf-btn" data-tf="3min">3m</button>
+              <button class="tf-btn active" data-tf="5min">5m</button>
+              <button class="tf-btn" data-tf="15min">15m</button>
+              <button class="tf-btn" data-tf="60min">1h</button>
+              <button class="tf-btn" data-tf="D">D</button>
+            </div>
+            <div class="divider-v"></div>
+            <div class="indicator-tags">
+              <span class="ind-pill ma20">MA 20</span>
+              <span class="ind-pill ema50">EMA 50</span>
+              <span class="ind-pill tv-pnl">TV Position P&amp;L Line</span>
+              <span id="live-candle-timer" class="ind-pill live-candle-pill tabular" title="Live Forming Candle Countdown">● LIVE BAR --:--</span>
+            </div>
+          </div>
+          <div class="toolbar-right">
+            <span class="layout-name">scalper</span>
+          </div>
+        </div>
+
+        <!-- Internal 3-Pane Split Grid -->
+        <div class="three-pane-grid">
+          <!-- SUB-CHART 1 (Left 50% W, 100% H): Underlying Index -->
+          <div class="chart-pane" id="pane-spot">
+            <div class="chart-overlay-legend">
+              <div class="legend-row">
+                <span class="live-dot"></span>
+                <strong id="spot-chart-title">NIFTY 50 · 5m · INDICES</strong>
+                <span id="spot-chart-ohlc" class="legend-ohlc tabular">--</span>
+              </div>
+              <div class="legend-row indicators">
+                <span class="ma20-legend tabular">MA 20: <strong id="spot-ma20-val">--</strong></span>
+                <span class="ema50-legend tabular">EMA 50: <strong id="spot-ema50-val">--</strong></span>
+              </div>
+            </div>
+
+            <!-- Right-Side Portfolio Total Live P&L Floating HUD inside Underlying Chart -->
+            <div class="tv-portfolio-hud" id="spot-portfolio-hud">
+              <div class="hud-header">PAPER SCALP P&amp;L</div>
+              <div class="hud-mtm tabular" id="hud-total-mtm">₹0.00</div>
+              <div class="hud-sub tabular">
+                <span>Open: <strong id="hud-open-pnl">₹0.00</strong></span>
+                <span> Pos: <strong id="hud-open-count">0</strong></span>
+              </div>
+            </div>
+
+            <div id="chart-spot-canvas" class="chart-canvas"></div>
+          </div>
+
+          <!-- RIGHT SUB-CHARTS STACK (50% W, split 50% H Call / 50% H Put) -->
+          <div class="right-charts-stack">
+            <!-- SUB-CHART 2 (Top-Right): Active Call Option -->
+            <div class="chart-pane active-pane" id="pane-call">
+              <div class="chart-overlay-legend">
+                <div class="legend-row">
+                  <span class="live-dot"></span>
+                  <strong id="call-chart-title">NIFTY CE · 5m · NFO-OPT</strong>
+                  <span id="call-chart-ohlc" class="legend-ohlc tabular">--</span>
+                </div>
+                <div class="legend-row">
+                  <span id="call-chart-greeks" class="greeks-mini-badge tabular">IV: -- | Δ: -- | Θ: --</span>
+                </div>
+              </div>
+
+              <!-- Floating Instant Bid/Ask Order Overlay (Kite/TradingView Style) -->
+              <div class="floating-bid-ask">
+                <button id="btn-chart-call-buy" class="float-order-btn buy" title="Instant Market Buy Call">
+                  <span id="call-float-ask" class="tabular">--</span>
+                  <small>BUY</small>
+                </button>
+                <span id="call-float-spread" class="spread-pill tabular">0.30</span>
+                <button id="btn-chart-call-sell" class="float-order-btn sell" title="Instant Market Sell Call">
+                  <span id="call-float-bid" class="tabular">--</span>
+                  <small>SELL</small>
+                </button>
+              </div>
+
+              <!-- TradingView Right-Side Live Position & P&L Pill Overlay (Inside Candlestick Chart) -->
+              <div id="tv-pos-overlay-call" class="tv-pos-overlay hidden">
+                <div class="tv-pos-line"></div>
+                <div class="tv-pos-pill" id="tv-pos-pill-call">
+                  <span class="tv-pos-qty tabular" id="tv-call-qty">+65</span>
+                  <span class="tv-pos-avg tabular" id="tv-call-avg">@ ₹0.00</span>
+                  <span class="tv-pos-pnl tabular" id="tv-call-pnl">+₹0.00 (0.0%)</span>
+                  <button class="tv-pos-action rev" id="btn-tv-call-rev" title="Reverse Position">⇅</button>
+                  <button class="tv-pos-action close" id="btn-tv-call-close" title="Close Position at Market">×</button>
+                </div>
+              </div>
+
+              <div id="chart-call-canvas" class="chart-canvas"></div>
+            </div>
+
+            <!-- SUB-CHART 3 (Bottom-Right): Active Put Option -->
+            <div class="chart-pane" id="pane-put">
+              <div class="chart-overlay-legend">
+                <div class="legend-row">
+                  <span class="live-dot"></span>
+                  <strong id="put-chart-title">NIFTY PE · 5m · NFO-OPT</strong>
+                  <span id="put-chart-ohlc" class="legend-ohlc tabular">--</span>
+                </div>
+                <div class="legend-row">
+                  <span id="put-chart-greeks" class="greeks-mini-badge tabular">IV: -- | Δ: -- | Θ: --</span>
+                </div>
+              </div>
+
+              <!-- Floating Instant Bid/Ask Order Overlay -->
+              <div class="floating-bid-ask">
+                <button id="btn-chart-put-buy" class="float-order-btn buy" title="Instant Market Buy Put">
+                  <span id="put-float-ask" class="tabular">--</span>
+                  <small>BUY</small>
+                </button>
+                <span id="put-float-spread" class="spread-pill tabular">0.30</span>
+                <button id="btn-chart-put-sell" class="float-order-btn sell" title="Instant Market Sell Put">
+                  <span id="put-float-bid" class="tabular">--</span>
+                  <small>SELL</small>
+                </button>
+              </div>
+
+              <!-- TradingView Right-Side Live Position & P&L Pill Overlay (Inside Candlestick Chart) -->
+              <div id="tv-pos-overlay-put" class="tv-pos-overlay hidden">
+                <div class="tv-pos-line"></div>
+                <div class="tv-pos-pill" id="tv-pos-pill-put">
+                  <span class="tv-pos-qty tabular" id="tv-put-qty">+65</span>
+                  <span class="tv-pos-avg tabular" id="tv-put-avg">@ ₹0.00</span>
+                  <span class="tv-pos-pnl tabular" id="tv-put-pnl">+₹0.00 (0.0%)</span>
+                  <button class="tv-pos-action rev" id="btn-tv-put-rev" title="Reverse Position">⇅</button>
+                  <button class="tv-pos-action close" id="btn-tv-put-close" title="Close Position at Market">×</button>
+                </div>
+              </div>
+
+              <div id="chart-put-canvas" class="chart-canvas"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Shared Chart Footer -->
+        <div class="chart-footer">
+          <div class="footer-ranges">
+            <button class="range-btn active" data-days="2">1d</button>
+            <button class="range-btn" data-days="5">5d</button>
+            <button class="range-btn" data-days="15">1m</button>
+          </div>
+          <div class="footer-right">
+            <span id="live-ist-clock" class="tabular">--:--:-- UTC+5:30</span>
+            <span class="footer-sep">|</span>
+            <span>%</span>
+            <span>log</span>
+            <button id="btn-chart-auto-fit" class="auto-fit-btn auto-active" title="Reset / Auto-Fit All Chart Scales (Double-click price axis also resets)">auto ⟲</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- BOTTOM-RIGHT PANEL: SCALPER ORDER WINDOW & POSITIONS -->
+      <div class="scalper-order-panel">
+        <!-- Panel Tab Bar -->
+        <div class="panel-tab-bar">
+          <div class="panel-tabs">
+            <button class="panel-tab active" data-bottom-tab="order-pad">⚡ Scalper Order Window</button>
+            <button class="panel-tab" data-bottom-tab="positions-tab">
+              📊 Open Positions (<span id="tab-pos-count" class="tabular">0</span>)
+            </button>
+            <button class="panel-tab" data-bottom-tab="orders-tab">
+              📜 Trade Log (<span id="tab-ord-count" class="tabular">0</span>)
+            </button>
+          </div>
+          <div class="panel-controls">
+            <span id="order-toast" class="order-toast"></span>
+          </div>
+        </div>
+
+        <!-- TAB 1: SCALPER ORDER PAD -->
+        <div id="bottom-view-order-pad" class="bottom-view active">
+          <!-- Global Order Sub-Header -->
+          <div class="order-subheader">
+            <div class="sub-left">
+              <select id="order-expiry-select" class="expiry-pill-select" title="Order Pad Expiry"></select>
+              <button id="btn-order-link" class="link-btn active" title="Linked with Option Chain">🔗</button>
+              <div class="lot-presets">
+                <span class="preset-label">Lots:</span>
+                <button class="lot-preset-btn active" data-lots="1">1L</button>
+                <button class="lot-preset-btn" data-lots="2">2L</button>
+                <button class="lot-preset-btn" data-lots="5">5L</button>
+                <button class="lot-preset-btn" data-lots="10">10L</button>
+              </div>
+            </div>
+            <div class="sub-right">
+              <span class="avail-label">Available. <strong id="order-avail-margin" class="tabular">₹10,00,000.00</strong></span>
+              <span class="avail-label">Used. <strong id="order-used-margin" class="tabular">₹0.00</strong></span>
+            </div>
+          </div>
+
+          <!-- Dual Symmetrical Execution Pads (Call Pad Left | Put Pad Right) -->
+          <div class="dual-order-grid">
+            <!-- CALL EXECUTION PAD (LEFT) -->
+            <div class="execution-pad call-pad">
+              <div class="contract-bar">
+                <div class="contract-left">
+                  <span class="leg-badge call">Call</span>
+                  <select id="call-strike-select" class="strike-select tabular"></select>
+                  <span id="call-contract-name" class="contract-name">NIFTY CE</span>
+                </div>
+                <div class="contract-right">
+                  <span class="ltp-label">LTP. <strong id="call-pad-ltp" class="tabular">₹--</strong></span>
+                </div>
+              </div>
+
+              <div class="action-row">
+                <div class="action-col">
+                  <button id="btn-pad-call-buy" class="exec-btn buy">Buy CE</button>
+                  <span class="margin-req tabular" id="call-buy-req">Req. ₹--</span>
+                </div>
+                <div class="qty-col">
+                  <div class="qty-input-box">
+                    <label for="call-qty-input">Qty.</label>
+                    <input id="call-qty-input" type="number" step="65" min="65" value="65" class="tabular" />
+                  </div>
+                  <span class="pos-inline-status tabular" id="call-inline-pos">No Open CE Pos</span>
+                </div>
+                <div class="action-col">
+                  <button id="btn-pad-call-sell" class="exec-btn sell">Sell CE</button>
+                  <span class="margin-req tabular" id="call-sell-req">Req. ₹--</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- PUT EXECUTION PAD (RIGHT) -->
+            <div class="execution-pad put-pad">
+              <div class="contract-bar">
+                <div class="contract-left">
+                  <span class="leg-badge put">Put</span>
+                  <select id="put-strike-select" class="strike-select tabular"></select>
+                  <span id="put-contract-name" class="contract-name">NIFTY PE</span>
+                </div>
+                <div class="contract-right">
+                  <span class="ltp-label">LTP. <strong id="put-pad-ltp" class="tabular">₹--</strong></span>
+                </div>
+              </div>
+
+              <div class="action-row">
+                <div class="action-col">
+                  <button id="btn-pad-put-buy" class="exec-btn buy">Buy PE</button>
+                  <span class="margin-req tabular" id="put-buy-req">Req. ₹--</span>
+                </div>
+                <div class="qty-col">
+                  <div class="qty-input-box">
+                    <label for="put-qty-input">Qty.</label>
+                    <input id="put-qty-input" type="number" step="65" min="65" value="65" class="tabular" />
+                  </div>
+                  <span class="pos-inline-status tabular" id="put-inline-pos">No Open PE Pos</span>
+                </div>
+                <div class="action-col">
+                  <button id="btn-pad-put-sell" class="exec-btn sell">Sell PE</button>
+                  <span class="margin-req tabular" id="put-sell-req">Req. ₹--</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: OPEN POSITIONS TABLE -->
+        <div id="bottom-view-positions-tab" class="bottom-view">
+          <div class="positions-table-wrap">
+            <table class="terminal-table">
+              <thead>
+                <tr>
+                  <th>Contract</th>
+                  <th>Side</th>
+                  <th class="num">Net Qty</th>
+                  <th class="num">Avg Price</th>
+                  <th class="num">Live LTP</th>
+                  <th class="num">Unrealized P&amp;L</th>
+                  <th class="num">P&amp;L %</th>
+                  <th class="num">Action</th>
+                </tr>
+              </thead>
+              <tbody id="positions-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- TAB 3: TRADE EXECUTION LOG -->
+        <div id="bottom-view-orders-tab" class="bottom-view">
+          <div class="trade-log-toolbar">
+            <div class="trade-log-meta">
+              <span class="avail-label">Realized P&amp;L. <strong id="trade-log-realized-pnl" class="tabular">₹0.00</strong></span>
+              <span class="avail-label">Capital. <strong id="trade-log-capital" class="tabular">₹10,00,000.00</strong></span>
+            </div>
+            <button id="btn-clear-trade-log" class="clear-all-btn" title="Delete all trade history, clear positions, and restore capital to ₹10,00,000">
+              Clear All
+            </button>
+          </div>
+          <div class="positions-table-wrap">
+            <table class="terminal-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Order ID</th>
+                  <th>Contract</th>
+                  <th>Side</th>
+                  <th class="num">Qty</th>
+                  <th class="num">Fill Price</th>
+                  <th class="num">Realized P&amp;L</th>
+                </tr>
+              </thead>
+              <tbody id="orders-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
